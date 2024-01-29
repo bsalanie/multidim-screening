@@ -11,12 +11,21 @@ packages = [
 ]
 
 [tool.poetry.dependencies]
-python = ">=3.11,<4.0"
+python = ">=3.11,<3.12"
+scipy = "1.10"
+pandas = "^2.2.0"
+openpyxl = "^3.1.2"
+altair = ">=5.0"
+bs_python_utils = ">=0.6.4"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.2.0"
 mypy = "^0.981"
 pre-commit = "^2.20.0"
+jupyterlab = "^4.0.11"
+ipykernel = "^6.29.0"
+snakeviz = "^2.2.0"
+
 
 [tool.poetry.group.docs.dependencies]
 mkdocs = "^1.4.2"
