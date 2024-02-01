@@ -3,7 +3,7 @@ from itertools import product
 import numpy as np
 from scipy.stats import norm
 
-from .values import val_I
+from .insurance_d2_m2_values import val_I
 
 
 def proba_accident(delta, s):

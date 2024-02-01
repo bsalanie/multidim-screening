@@ -1,20 +1,20 @@
-"""computes the components of the utilities for (deductible, copay) contracts
-with two-dimensional types (risk-aversion, risk)
+"""computes the components of the utilities for the insurance model 
+with two-dimensional types (risk-aversion, risk) and (deductible, copay) contracts
 """
 
 from typing import Any
 
 import numpy as np
-from numba import float64, njit
-from numba.types import UniTuple
+from numba import njit
 from numba_stats import norm
 
-from .utils import (
-    coeff_qpenalty_S0,
-    coeff_qpenalty_S0_0,
-    coeff_qpenalty_S01_0,
-    coeff_qpenalty_S1_0,
-    coeff_qpenalty_S1_1,
+# penalties to keep minimization of `S` within bounds
+coeff_qpenalty_S0 = 0.00001  # coefficient of the quadratic penalty on S for y0 large
+coeff_qpenalty_S0_0 = 1_000.0  # coefficient of the quadratic penalty on S for y0<0
+coeff_qpenalty_S1_0 = 1_000.0  # coefficient of the quadratic penalty on S for y1<0
+coeff_qpenalty_S1_1 = 1_000.0  # coefficient of the quadratic penalty on S for y1>1
+coeff_qpenalty_S01_0 = (
+    1_000.0  # coefficient of the quadratic penalty on S for y0 + y1 small
 )
 
 
@@ -88,7 +88,7 @@ def n01_cdf_mat(a: np.ndarray) -> Any:
         a: an `(m,k)`-matrix
 
     Returns:
-        the `(m,k)`-matrix $\Phi(a)$
+        the `(m,k)`-matrix $\\Phi(a)$
     """
     m, k = a.shape
     c = np.empty((m, k))
@@ -105,7 +105,7 @@ def n01_pdf_mat(a: np.ndarray) -> Any:
         a: an `(m,k)`-matrix
 
     Returns:
-        the `(m,k)`-matrix $\phi(a)$
+        the `(m,k)`-matrix $\\phi(a)$
     """
     m, k = a.shape
     c = np.empty((m, k))
@@ -116,22 +116,22 @@ def n01_pdf_mat(a: np.ndarray) -> Any:
 
 @njit("float64[:](float64[:], float64)")
 def val_A(deltas: np.ndarray, s: float) -> Any:
-    """evaluates $A(\delta,s)$, the probability that the loss is less than the deductible
-    for all values of $\delta$ in `deltas`
+    """evaluates $A(\\delta,s)$, the probability that the loss is less than the deductible
+    for all values of $\\delta$ in `deltas`
 
     Args:
         deltas: an $m$-vector of risk parameters
         s: the dispersion of losses
 
     Returns:
-        the value of $A(\delta,s)$ as an $m$-vector
+        the value of $A(\\delta,s)$ as an $m$-vector
     """
     return norm.cdf(-deltas / s, 0.0, 1.0)
 
 
 @njit("float64[:,:](float64[:], float64[:], float64[:], float64)")
 def val_B(y: np.ndarray, sigmas: np.ndarray, deltas: np.ndarray, s: float) -> Any:
-    """evaluates $B(y,\sigma,\delta,s)$ for all values in `y` and `(sigmas, deltas)`
+    """evaluates $B(y,\\sigma,\\delta,s)$ for all values in `y` and `(sigmas, deltas)`
 
     Args:
         y: a $2 k$-vector of $k$ contracts
@@ -140,7 +140,7 @@ def val_B(y: np.ndarray, sigmas: np.ndarray, deltas: np.ndarray, s: float) -> An
         s: the dispersion of losses
 
     Returns:
-        the values of $B(y,\sigma,\delta,s)$ as an $(m, k)$ matrix
+        the values of $B(y,\\sigma,\\delta,s)$ as an $(m, k)$ matrix
     """
     y_0, _ = split_y(y)
     argu1 = -deltas / s - sigmas * s
@@ -157,7 +157,7 @@ def val_B(y: np.ndarray, sigmas: np.ndarray, deltas: np.ndarray, s: float) -> An
 
 @njit("float64[:, :](float64[:], float64[:], float64[:], float64)")
 def val_C(y: np.ndarray, sigmas: np.ndarray, deltas: np.ndarray, s: float) -> Any:
-    """evaluates $C(y,\sigma,\delta,s)$
+    """evaluates $C(y,\\sigma,\\delta,s)$
 
     Args:
         y:  a $2 k$-vector of $k$ contracts
@@ -166,7 +166,7 @@ def val_C(y: np.ndarray, sigmas: np.ndarray, deltas: np.ndarray, s: float) -> An
         s: the dispersion of losses
 
     Returns:
-        the value of $C(y,\sigma,\delta,s)$ as a $(m, k)$ matrix
+        the value of $C(y,\\sigma,\\delta,s)$ as a $(m, k)$ matrix
     """
     y_0, y_1 = split_y(y)
     dy0s = my_outer_add(deltas, -y_0) / s
@@ -180,7 +180,7 @@ def val_C(y: np.ndarray, sigmas: np.ndarray, deltas: np.ndarray, s: float) -> An
 
 @njit("float64[:,:](float64[:], float64[:], float64)")
 def val_D(y: np.ndarray, deltas: np.ndarray, s: float) -> Any:
-    """evaluates $D(y,\delta,s)$, the actuarial premium
+    """evaluates $D(y,\\delta,s)$, the actuarial premium
 
     Args:
         y: a $2 k$-vector of $k$ contracts
@@ -188,7 +188,7 @@ def val_D(y: np.ndarray, deltas: np.ndarray, s: float) -> Any:
         s: the dispersion of losses
 
     Returns:
-        the value of $D(y,\sigma,\delta,s)$ as a $(m, k)$ matrix
+        the value of $D(y,\\sigma,\\delta,s)$ as a $(m, k)$ matrix
     """
     y_0, y_1 = split_y(y)
     dy0s = my_outer_add(deltas, -y_0) / s
@@ -207,30 +207,10 @@ def val_I(y, sigmas, deltas, s) -> Any:
         s: the dispersion of losses
 
     Returns:
-        the value of $I(y,\sigma,\delta,s)$ as an $(m, k)$ matrix
+        the value of $I(y,\\sigma,\\delta,s)$ as an $(m, k)$ matrix
     """
     return add_to_each_col(
         val_B(y, sigmas, deltas, s) + val_C(y, sigmas, deltas, s), val_A(deltas, s)
-    )
-
-
-@njit("float64[:,:](float64[:], float64[:], float64[:], float64)")
-def b_fun(y, sigmas, deltas, s):
-    """evaluates the value of the coverage
-
-    Args:
-        y:  a $2 k$-vector of $k$ contracts
-        sigmas: an $m$-vector of risk-aversion parameters
-        deltas: an $m$-vector of risk parameters
-        s: the dispersion of losses
-
-    Returns:
-        an $(m,k)$-matrix
-    """
-    return multiply_each_col(
-        np.log(val_I(np.array([0.0, 1.0]), sigmas, deltas, s))
-        - np.log(val_I(y, sigmas, deltas, s)),
-        1.0 / sigmas,
     )
 
 
@@ -255,26 +235,6 @@ def S_penalties(y: np.ndarray):
         + coeff_qpenalty_S1_0 * np.sum(y_1_neg * y_1_neg)
         + coeff_qpenalty_S1_1 * np.sum(y_1_above1 * y_1_above1)
         + coeff_qpenalty_S01_0 * np.sum(y_01_small * y_01_small)
-    )
-
-
-@njit("float64[:,:](float64[:], float64[:], float64[:], float64, float64)")
-def S_fun(y, sigmas, deltas, s, loading):
-    """evaluates the joint surplus
-
-    Args:
-        y:  a $2 k$-vector of $k$ contracts
-        sigmas: an $m$-vector of risk-aversion parameters
-        deltas: an $m$-vector of risk parameters
-        s: the dispersion of losses
-
-    Returns:
-        a $(m,k)$-matrix
-    """
-    return (
-        b_fun(y, sigmas, deltas, s)
-        - (1.0 + loading) * val_D(y, deltas, s)
-        - S_penalties(y)
     )
 
 
@@ -330,7 +290,7 @@ def d0_val_C(y, sigmas, deltas, s):
 
 @njit("float64[:, :](float64[:, :])")
 def H_fun(argu: np.ndarray) -> Any:
-    """computes the function $H(x)=x\Phi(x)+\phi(x)$
+    """computes the function $H(x)=x\\Phi(x)+\\phi(x)$
 
     Args:
         argu:  must be a matrix
@@ -438,29 +398,6 @@ def d1_b_fun(y, sigmas, deltas, s):
         d1_val_C(y, sigmas, deltas, s) / val_I(y, sigmas, deltas, s),
         1.0 / sigmas,
     )
-
-
-@njit("float64[:,:,:](float64[:], float64[:], float64[:], float64)")
-def db_fun(y, sigmas, deltas, s):
-    """calculates both derivatives of the coverage
-
-    Args:
-        y:  a $2 k$-vector of $k$ contracts
-        sigmas: an $m$-vector of risk-aversion parameters
-        deltas: an $m$-vector of risk parameters
-        s: the dispersion of losses
-
-    Returns:
-        a $(2,k,m)$-array
-    """
-    y_0, _ = split_y(y)
-    denom_inv = 1.0 / multiply_each_col(val_I(y, sigmas, deltas, s), sigmas)
-    derivatives_b = np.empty((2, sigmas.size, y_0.size))
-    derivatives_b[0, :, :] = (
-        -(d0_val_B(y, sigmas, deltas, s) + d0_val_C(y, sigmas, deltas, s)) * denom_inv
-    )
-    derivatives_b[1, :, :] = -d1_val_C(y, sigmas, deltas, s) * denom_inv
-    return derivatives_b
 
 
 @njit("float64[:](float64[:])")
